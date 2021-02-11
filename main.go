@@ -25,7 +25,12 @@ func getString(bytes []byte) string {
 	return hex.EncodeToString(bytes[:])
 }
 
-func socketPipe(conn1, conn2 net.Conn) {
+func socketPipe(c1, c2 client) {
+	counter.RLock()
+	conn1 := c1.conn
+	conn2 := c2.conn
+	counter.RUnlock()
+
 	conn1.Write([]byte("ON"))
 	conn2.Write([]byte("ON"))
 
@@ -33,6 +38,14 @@ func socketPipe(conn1, conn2 net.Conn) {
 	chan2 := chanFromConn(conn2)
 
 	for {
+		if conn1 == nil || conn2 == nil {
+			conn1.Write([]byte("w:disconnected"))
+			conn2.Write([]byte("w:disconnected"))
+			counter.Lock()
+			delete(counter.searchTable, c1.fName)
+			delete(counter.searchTable, c2.fName)
+			counter.Unlock()
+		}
 		select {
 		case b1 := <- chan1:
 			if b1 == nil {
@@ -133,14 +146,15 @@ func handleConnection(c net.Conn) {
 	}
 
 	counter.RLock()
-	pcon := counter.searchTable[getString(lName)].conn
+	c1 := counter.searchTable[getString(fName)]
+	c2 := counter.searchTable[getString(lName)]
 	counter.RUnlock()
 
-	go socketPipe(c, pcon)
+	go socketPipe(c1, c2)
 }
 
 func main() {
-	PORT := ":5656"
+	PORT := "0.0.0.0:5656"
 	listener, err := net.Listen("tcp", PORT)
 	if err != nil {
 		fmt.Errorf(err.Error())
